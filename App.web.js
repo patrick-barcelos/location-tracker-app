@@ -1,22 +1,16 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, TouchableOpacity, Platform } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import { useState, useEffect } from 'react';
 import * as Location from 'expo-location';
 import LocationsList from './LocationsList';
 import API_CONFIG from './config';
-
-// Conditionally import MapScreen only for native platforms
-let MapScreen;
-if (Platform.OS !== 'web') {
-  MapScreen = require('./MapView').default;
-}
 
 export default function App() {
   const [location, setLocation] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const [apiStatus, setApiStatus] = useState('Ready to send');
   const [isLoading, setIsLoading] = useState(false);
-  const [currentScreen, setCurrentScreen] = useState('tracker'); // 'tracker', 'locations', or 'map'
+  const [currentScreen, setCurrentScreen] = useState('tracker'); // 'tracker' or 'locations'
 
   // Function to set test location
   const setTestLocation = () => {
@@ -85,61 +79,32 @@ export default function App() {
   };
 
   useEffect(() => {
-    (async () => {
-      console.log('Starting location permission request...');
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      console.log('Location permission status:', status);
-      
-      if (status !== 'granted') {
-        console.log('Location permission denied');
-        setErrorMsg('Permission to access location was denied');
-        return;
-      }
-
-      console.log('Getting current position...');
-      try {
-        // Try to get location with timeout and lower accuracy first
-        let location = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-          maximumAge: 10000,
-          timeout: 15000,
-        });
-        console.log('Current position received:', location);
-        setLocation(location);
-
-        // Start watching position for real-time updates
-        console.log('Starting location watching...');
-        Location.watchPositionAsync(
-          {
-            accuracy: Location.Accuracy.Balanced,
-            timeInterval: 5000,
-            distanceInterval: 10,
-          },
-          (location) => {
-            console.log('Location updated:', location);
-            setLocation(location);
-          }
-        );
-      } catch (error) {
-        console.error('Error getting location:', error);
-        setErrorMsg('Error getting location: ' + error.message);
-        
-        // Try with even lower accuracy as fallback
-        console.log('Trying with lower accuracy...');
-        try {
-          let location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Low,
-            maximumAge: 60000,
-            timeout: 10000,
-          });
-          console.log('Fallback location received:', location);
-          setLocation(location);
-        } catch (fallbackError) {
-          console.error('Fallback location failed:', fallbackError);
-          setErrorMsg('Unable to get location. Please check GPS settings.');
+    // For web, we'll use a simplified location approach
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      console.log('Using browser geolocation...');
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          console.log('Browser location received:', position);
+          const locationData = {
+            coords: {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+            },
+            timestamp: position.timestamp,
+          };
+          setLocation(locationData);
+        },
+        (error) => {
+          console.error('Browser geolocation error:', error);
+          setErrorMsg('Geolocation error: ' + error.message);
         }
-      }
-    })();
+      );
+    } else {
+      // Fallback for environments without geolocation
+      console.log('No geolocation available, using test location');
+      setTestLocation();
+    }
   }, []);
 
   let text = 'Waiting..';
@@ -154,19 +119,10 @@ export default function App() {
     return <LocationsList onBack={() => setCurrentScreen('tracker')} />;
   }
 
-  // Show map screen if selected (only on native platforms)
-  if (currentScreen === 'map') {
-    if (Platform.OS === 'web') {
-      // Fallback to locations list on web
-      return <LocationsList onBack={() => setCurrentScreen('tracker')} />;
-    }
-    return <MapScreen onBack={() => setCurrentScreen('tracker')} />;
-  }
-
   // Show GPS tracker screen
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Real-time GPS Tracker</Text>
+      <Text style={styles.title}>GPS Tracker (Web Version)</Text>
       <Text style={styles.location}>{text}</Text>
       
       {!location && (
@@ -197,34 +153,22 @@ export default function App() {
         </Text>
       </TouchableOpacity>
 
-      <View style={styles.menuContainer}>
-        <Text style={styles.menuTitle}>View Saved Locations:</Text>
-        <View style={styles.menuButtons}>
-          <TouchableOpacity 
-            style={[styles.menuButton, styles.listButton]}
-            onPress={() => setCurrentScreen('locations')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.menuButtonText}>
-              📋 List View
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.menuButton, styles.mapButton]}
-            onPress={() => setCurrentScreen('map')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.menuButtonText}>
-              {Platform.OS === 'web' ? '📋 List View (Alt)' : '🗺️ Map View'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <TouchableOpacity 
+        style={[styles.button, styles.listButton]}
+        onPress={() => setCurrentScreen('locations')}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.buttonText}>
+          📋 View Saved Locations
+        </Text>
+      </TouchableOpacity>
       
       <Text style={styles.apiStatus}>Status: {apiStatus}</Text>
       <Text style={styles.debug}>
         Debug: {location ? 'Location OK' : 'No Location'} | {isLoading ? 'Loading' : 'Ready'}
+      </Text>
+      <Text style={styles.webNote}>
+        Note: Web version uses browser geolocation. Maps available on mobile only.
       </Text>
       <StatusBar style="auto" />
     </View>
@@ -243,19 +187,22 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 20,
+    color: '#333',
   },
   location: {
     fontSize: 16,
     textAlign: 'center',
     lineHeight: 24,
+    marginBottom: 20,
   },
   button: {
     backgroundColor: '#007AFF',
     paddingHorizontal: 30,
     paddingVertical: 15,
     borderRadius: 10,
-    marginTop: 20,
+    marginTop: 10,
     marginBottom: 10,
+    width: '80%',
   },
   buttonDisabled: {
     backgroundColor: '#ccc',
@@ -265,6 +212,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  testButton: {
+    backgroundColor: '#FF9500',
+  },
+  listButton: {
+    backgroundColor: '#17a2b8',
   },
   apiStatus: {
     fontSize: 14,
@@ -278,44 +231,11 @@ const styles = StyleSheet.create({
     marginTop: 5,
     color: '#999',
   },
-  testButton: {
-    backgroundColor: '#FF9500',
-    marginBottom: 10,
-  },
-  menuContainer: {
-    marginTop: 20,
-    marginBottom: 10,
-    width: '100%',
-  },
-  menuTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  webNote: {
+    fontSize: 12,
     textAlign: 'center',
-    marginBottom: 10,
-    color: '#333',
-  },
-  menuButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-  },
-  menuButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-    borderRadius: 8,
-    marginHorizontal: 5,
-  },
-  menuButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  listButton: {
-    backgroundColor: '#17a2b8',
-  },
-  mapButton: {
-    backgroundColor: '#28a745',
+    marginTop: 10,
+    color: '#888',
+    fontStyle: 'italic',
   },
 });

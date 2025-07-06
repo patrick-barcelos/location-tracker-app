@@ -1,22 +1,13 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, TouchableOpacity, Platform } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import { useState, useEffect } from 'react';
 import * as Location from 'expo-location';
-import LocationsList from './LocationsList';
-import API_CONFIG from './config';
 
-// Conditionally import MapScreen only for native platforms
-let MapScreen;
-if (Platform.OS !== 'web') {
-  MapScreen = require('./MapView').default;
-}
-
-export default function App() {
+export default function SimpleApp() {
   const [location, setLocation] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const [apiStatus, setApiStatus] = useState('Ready to send');
   const [isLoading, setIsLoading] = useState(false);
-  const [currentScreen, setCurrentScreen] = useState('tracker'); // 'tracker', 'locations', or 'map'
 
   // Function to set test location
   const setTestLocation = () => {
@@ -50,7 +41,7 @@ export default function App() {
 
     try {
       console.log('Making API call...');
-      const response = await fetch(`${API_CONFIG.getApiUrl()}/api/location`, {
+      const response = await fetch('http://localhost:3000/api/location', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -98,7 +89,6 @@ export default function App() {
 
       console.log('Getting current position...');
       try {
-        // Try to get location with timeout and lower accuracy first
         let location = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
           maximumAge: 10000,
@@ -123,21 +113,6 @@ export default function App() {
       } catch (error) {
         console.error('Error getting location:', error);
         setErrorMsg('Error getting location: ' + error.message);
-        
-        // Try with even lower accuracy as fallback
-        console.log('Trying with lower accuracy...');
-        try {
-          let location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Low,
-            maximumAge: 60000,
-            timeout: 10000,
-          });
-          console.log('Fallback location received:', location);
-          setLocation(location);
-        } catch (fallbackError) {
-          console.error('Fallback location failed:', fallbackError);
-          setErrorMsg('Unable to get location. Please check GPS settings.');
-        }
       }
     })();
   }, []);
@@ -149,24 +124,9 @@ export default function App() {
     text = `Latitude: ${location.coords.latitude.toFixed(6)}\nLongitude: ${location.coords.longitude.toFixed(6)}\nAccuracy: ${location.coords.accuracy}m`;
   }
 
-  // Show locations screen if selected
-  if (currentScreen === 'locations') {
-    return <LocationsList onBack={() => setCurrentScreen('tracker')} />;
-  }
-
-  // Show map screen if selected (only on native platforms)
-  if (currentScreen === 'map') {
-    if (Platform.OS === 'web') {
-      // Fallback to locations list on web
-      return <LocationsList onBack={() => setCurrentScreen('tracker')} />;
-    }
-    return <MapScreen onBack={() => setCurrentScreen('tracker')} />;
-  }
-
-  // Show GPS tracker screen
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Real-time GPS Tracker</Text>
+      <Text style={styles.title}>GPS Tracker - Simple Version</Text>
       <Text style={styles.location}>{text}</Text>
       
       {!location && (
@@ -183,12 +143,7 @@ export default function App() {
       
       <TouchableOpacity 
         style={[styles.button, isLoading && styles.buttonDisabled]}
-        onPress={() => {
-          console.log('TouchableOpacity pressed');
-          console.log('Location state:', location);
-          console.log('Loading state:', isLoading);
-          sendLocationToAPI();
-        }}
+        onPress={sendLocationToAPI}
         disabled={isLoading}
         activeOpacity={0.7}
       >
@@ -196,31 +151,6 @@ export default function App() {
           {isLoading ? 'Sending...' : 'Send Location to API'}
         </Text>
       </TouchableOpacity>
-
-      <View style={styles.menuContainer}>
-        <Text style={styles.menuTitle}>View Saved Locations:</Text>
-        <View style={styles.menuButtons}>
-          <TouchableOpacity 
-            style={[styles.menuButton, styles.listButton]}
-            onPress={() => setCurrentScreen('locations')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.menuButtonText}>
-              📋 List View
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.menuButton, styles.mapButton]}
-            onPress={() => setCurrentScreen('map')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.menuButtonText}>
-              {Platform.OS === 'web' ? '📋 List View (Alt)' : '🗺️ Map View'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
       
       <Text style={styles.apiStatus}>Status: {apiStatus}</Text>
       <Text style={styles.debug}>
@@ -243,19 +173,22 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 20,
+    color: '#333',
   },
   location: {
     fontSize: 16,
     textAlign: 'center',
     lineHeight: 24,
+    marginBottom: 20,
   },
   button: {
     backgroundColor: '#007AFF',
     paddingHorizontal: 30,
     paddingVertical: 15,
     borderRadius: 10,
-    marginTop: 20,
+    marginTop: 10,
     marginBottom: 10,
+    width: '80%',
   },
   buttonDisabled: {
     backgroundColor: '#ccc',
@@ -265,6 +198,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  testButton: {
+    backgroundColor: '#FF9500',
   },
   apiStatus: {
     fontSize: 14,
@@ -277,45 +213,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 5,
     color: '#999',
-  },
-  testButton: {
-    backgroundColor: '#FF9500',
-    marginBottom: 10,
-  },
-  menuContainer: {
-    marginTop: 20,
-    marginBottom: 10,
-    width: '100%',
-  },
-  menuTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 10,
-    color: '#333',
-  },
-  menuButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-  },
-  menuButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-    borderRadius: 8,
-    marginHorizontal: 5,
-  },
-  menuButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  listButton: {
-    backgroundColor: '#17a2b8',
-  },
-  mapButton: {
-    backgroundColor: '#28a745',
   },
 });
